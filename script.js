@@ -13,6 +13,7 @@ const state = {
   maxCacheSize: 8,
   baseSize: { width: 960, height: 620 },
   currentSize: { width: 960, height: 620 },
+  pageRatio: 960 / 620,
   displayMode: 'double'
 };
 
@@ -41,6 +42,20 @@ async function init() {
     console.error('PDF.js failed to load.');
     return;
   }
+
+async function determinePageRatio() {
+  if (!state.pdfDoc) return;
+  try {
+    const firstPage = await state.pdfDoc.getPage(1);
+    const viewport = firstPage.getViewport({ scale: 1 });
+    if (viewport.width && viewport.height) {
+      state.pageRatio = viewport.width / viewport.height;
+    }
+    firstPage.cleanup?.();
+  } catch (err) {
+    console.warn('Unable to determine PDF page ratio', err);
+  }
+}
 
   wireControls();
   updateZoomLabel();
@@ -107,6 +122,7 @@ async function loadPDF() {
 
     state.pdfDoc = await loadingTask.promise;
     state.numPages = state.pdfDoc.numPages;
+    await determinePageRatio();
     inputPage.max = state.numPages;
     inputPage.placeholder = `1-${state.numPages}`;
     updatePageIndicator(1);
@@ -140,9 +156,10 @@ function buildPageShells(count) {
 }
 
 async function initFlipbook() {
-  const { width, height } = computeBaseSize();
+  const { width, height, display } = computeBaseSize();
   state.baseSize = { width, height };
   state.currentSize = { width, height };
+  state.displayMode = display;
   flipbookEl.style.width = `${width}px`;
   flipbookEl.style.height = `${height}px`;
 
@@ -153,7 +170,7 @@ async function initFlipbook() {
     elevation: 50,
     duration: 1100,
     gradients: true,
-    display: width < 700 ? 'single' : 'double',
+    display,
     when: {
       turning: function (_event, page) {
         ensureRenderedAround(page);
@@ -170,7 +187,7 @@ async function initFlipbook() {
 
 function resizeFlipbook(forceRender = false) {
   if (!state.pdfDoc) return;
-  const { width, height } = computeBaseSize();
+  const { width, height, display } = computeBaseSize();
   state.baseSize = { width, height };
   const scaled = {
     width: width * state.currentZoom,
@@ -183,11 +200,12 @@ function resizeFlipbook(forceRender = false) {
 
   if ($(flipbookEl).data('turn')) {
     $(flipbookEl).turn('size', scaled.width, scaled.height);
-    const nextDisplay = scaled.width < 640 ? 'single' : 'double';
-    if (nextDisplay !== state.displayMode) {
-      state.displayMode = nextDisplay;
-      $(flipbookEl).turn('display', nextDisplay);
+    if (display !== state.displayMode) {
+      state.displayMode = display;
+      $(flipbookEl).turn('display', display);
     }
+  } else {
+    state.displayMode = display;
   }
 
   if (forceRender) {
@@ -199,16 +217,21 @@ function resizeFlipbook(forceRender = false) {
 function computeBaseSize() {
   const containerWidth = Math.max(320, flipContainer.clientWidth - 40);
   const containerHeight = Math.max(320, flipContainer.clientHeight - 30);
-  const pageRatio = 960 / 620;
-  let width = containerWidth;
-  let height = width / pageRatio;
+  const pageRatio = state.pageRatio || (960 / 620);
+  const wantsSingle = containerWidth < 700;
+  const pagesAcross = wantsSingle ? 1 : 2;
+
+  let leafWidth = containerWidth / pagesAcross;
+  let height = leafWidth / pageRatio;
 
   if (height > containerHeight) {
     height = containerHeight;
-    width = height * pageRatio;
+    leafWidth = height * pageRatio;
   }
 
-  return { width, height };
+  const width = leafWidth * pagesAcross;
+
+  return { width, height, display: wantsSingle ? 'single' : 'double' };
 }
 
 function updatePageIndicator(page) {

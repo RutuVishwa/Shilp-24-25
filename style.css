@@ -193,7 +193,10 @@ body {
 .flipbook {
   width: 960px;
   height: 620px;
-  background: linear-gradient(120deg, #fffdf9, #fff4e9);
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.35), transparent 55%),
+    radial-gradient(circle at 80% 0%, rgba(255, 227, 189, 0.4), transparent 50%),
+    linear-gradient(140deg, #f0d4b8, #f6caa0 48%, #f1b17a);
   border-radius: 28px;
   border: 1px solid #f0d7bf;
   box-shadow: 0 30px 70px rgba(127, 85, 44, 0.22);
@@ -218,7 +221,26 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.7), rgba(249, 224, 196, 0.55)),
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.35), transparent 55%);
+  overflow: hidden;
+}
+
+.flip-page::after {
+  content: "";
+  position: absolute;
+  inset: 18px;
+  border-radius: 18px;
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  box-shadow: inset 0 12px 35px rgba(117, 70, 35, 0.07);
+  opacity: 1;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.flip-page.has-content::after {
+  opacity: 0;
 }
 
 .flip-page img {
