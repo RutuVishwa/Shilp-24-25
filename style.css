@@ -1,0 +1,332 @@
+:root {
+  --bg: #f8f2ea;
+  --bg-secondary: #f1e5d7;
+  --panel: #fff9f3;
+  --panel-light: #fff3e4;
+  --panel-dark: #f0d5b8;
+  --text: #4c2e1f;
+  --muted: #87694f;
+  --accent: #d5912a;
+  --accent-2: #c05415;
+  --border: #e3caa7;
+  --shadow-soft: 0 18px 40px rgba(139, 94, 46, 0.15);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", "Helvetica Neue", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(255, 209, 143, 0.45), transparent 52%),
+    radial-gradient(circle at 80% 0%, rgba(255, 246, 223, 0.75), transparent 45%),
+    var(--bg);
+  color: var(--text);
+  min-height: 100%;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 25;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 20px;
+  background: linear-gradient(120deg, #fff7ef, #f7e4cd);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(186, 126, 55, 0.18);
+}
+
+.title {
+  margin: 0;
+  flex: 1;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 600;
+  font-family: "Georgia", "Times New Roman", serif;
+  color: #5c3218;
+  letter-spacing: 0.04em;
+}
+
+.icon-btn,
+.ctl-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: linear-gradient(135deg, #fff, var(--panel-light));
+  color: var(--text);
+  padding: 8px 16px;
+  font-size: 15px;
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.2s ease, border 0.2s ease;
+  box-shadow: var(--shadow-soft);
+}
+
+.icon-btn:hover,
+.ctl-btn:hover {
+  border-color: var(--accent);
+  box-shadow: 0 12px 24px rgba(213, 145, 42, 0.25);
+}
+
+.icon-btn:active,
+.ctl-btn:active {
+  transform: scale(0.97);
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.zoom-label {
+  min-width: 64px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.main {
+  position: relative;
+  height: calc(100vh - 64px - 78px);
+  display: flex;
+  overflow: hidden;
+}
+
+.sidebar {
+  position: fixed;
+  top: 64px;
+  bottom: 78px;
+  left: 0;
+  width: min(320px, 80vw);
+  background: rgba(255, 249, 243, 0.97);
+  border-right: 1px solid var(--border);
+  transform: translateX(-100%);
+  transition: transform 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  z-index: 30;
+  box-shadow: 20px 0 30px rgba(214, 161, 91, 0.15);
+}
+
+.sidebar.open {
+  transform: translateX(0);
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+
+.toc {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 0 20px;
+}
+
+.toc-empty {
+  color: var(--muted);
+  padding: 16px;
+  font-size: 14px;
+}
+
+.toc-section {
+  padding: 10px 18px 6px;
+  border-bottom: 1px dashed rgba(116, 69, 26, 0.2);
+}
+
+.toc-section-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--accent-2);
+  font-family: "Georgia", "Times New Roman", serif;
+  letter-spacing: 0.03em;
+}
+
+.toc-link {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 14px;
+  padding: 4px 0;
+  gap: 16px;
+}
+
+.toc-link:hover {
+  color: var(--accent);
+}
+
+.toc-link .page {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.flip-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px clamp(12px, 4vw, 48px);
+  overflow: auto;
+}
+
+.flip-wrapper {
+  position: relative;
+}
+
+.flipbook {
+  width: 960px;
+  height: 620px;
+  background: linear-gradient(120deg, #fffdf9, #fff4e9);
+  border-radius: 28px;
+  border: 1px solid #f0d7bf;
+  box-shadow: 0 30px 70px rgba(127, 85, 44, 0.22);
+  transform-origin: center center;
+  transition: transform 0.2s ease;
+  overflow: hidden;
+  position: relative;
+}
+
+.flipbook .turn-page,
+.flipbook .page-wrapper {
+  background: transparent !important;
+  border: none !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+}
+
+.flip-page {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+}
+
+.flip-page img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+}
+
+.page-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.7), transparent 70%);
+}
+
+.bottombar {
+  height: 78px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: linear-gradient(120deg, #fff4e5, #fbe7cf);
+  border-top: 1px solid var(--border);
+  gap: 16px;
+  box-shadow: 0 -10px 30px rgba(214, 161, 91, 0.12);
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+#inputPage {
+  width: 90px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  padding: 8px 12px;
+  font-size: 15px;
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.page-indicator {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+@media (max-width: 1024px) {
+  .flipbook {
+    width: clamp(620px, 90vw, 860px);
+    height: clamp(420px, 60vh, 560px);
+    border-radius: 24px;
+  }
+}
+
+@media (max-width: 768px) {
+  .topbar {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .title {
+    flex: 100%;
+    text-align: left;
+  }
+
+  .main {
+    height: calc(100vh - 120px);
+  }
+
+  .bottombar {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 12px;
+  }
+
+  .pager {
+    flex-wrap: wrap;
+  }
+
+  .flipbook {
+    width: clamp(320px, 94vw, 560px);
+    height: clamp(380px, 60vh, 500px);
+    border-radius: 18px;
+  }
+}

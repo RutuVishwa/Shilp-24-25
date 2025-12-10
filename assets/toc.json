@@ -1,0 +1,11 @@
+{
+  "sections": [
+    { "title": "Editor's Note", "page": 2 },
+    { "title": "Campus Highlights", "page": 6 },
+    { "title": "Research Spotlight", "page": 18 },
+    { "title": "Alumni Stories", "page": 42 },
+    { "title": "Student Art Gallery", "page": 66 },
+    { "title": "Sports Rewind", "page": 84 },
+    { "title": "Closing Thoughts", "page": 108 }
+  ]
+}
