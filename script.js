@@ -42,6 +42,17 @@ async function init() {
     console.error('PDF.js failed to load.');
     return;
   }
+  wireControls();
+  updateZoomLabel();
+
+  try {
+    await loadTOC();
+  } catch (err) {
+    console.warn('TOC load failed', err);
+  }
+
+  await loadPDF();
+}
 
 async function determinePageRatio() {
   if (!state.pdfDoc) return;
@@ -55,18 +66,6 @@ async function determinePageRatio() {
   } catch (err) {
     console.warn('Unable to determine PDF page ratio', err);
   }
-}
-
-  wireControls();
-  updateZoomLabel();
-
-  try {
-    await loadTOC();
-  } catch (err) {
-    console.warn('TOC load failed', err);
-  }
-
-  await loadPDF();
 }
 
 function wireControls() {
