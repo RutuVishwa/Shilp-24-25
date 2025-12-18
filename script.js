@@ -6,7 +6,7 @@ const state = {
   numPages: 0,
   currentZoom: 1,
   minZoom: 0.8,
-  maxZoom: 2,
+  maxZoom: 3,
   zoomStep: 0.1,
   renderQueue: new Map(),
   pageCache: new Map(),
@@ -14,9 +14,19 @@ const state = {
   baseSize: { width: 960, height: 620 },
   currentSize: { width: 960, height: 620 },
   pageRatio: 960 / 620,
-  displayMode: 'double'
+  displayMode: 'double',
+  // Pan state (in CSS pixels), applied as translate on the scaled flipbook
+  pan: { x: 0, y: 0 },
+  isDragging: false,
+  dragStart: { x: 0, y: 0 },
+  panStart: { x: 0, y: 0 },
+  // touch gesture state
+  pinchStartDist: 0,
+  pinchStartZoom: 1
 };
 
+const flipbookFrame = document.getElementById('flipbookFrame');
+const flipbookZoom = document.getElementById('flipbookZoom');
 const flipbookEl = document.getElementById('flipbook');
 const flipContainer = document.getElementById('flipContainer');
 const flipWrapper = document.getElementById('flipWrapper');
@@ -34,6 +44,7 @@ const btnZoomOut = document.getElementById('btnZoomOut');
 const zoomLabel = document.getElementById('zoomLabel');
 const tocContainer = document.getElementById('tocContainer');
 const pageSound = document.getElementById('pageSound');
+const multiTurnSound = document.getElementById('multiTurnSound');
 
 init();
 
@@ -52,6 +63,59 @@ async function init() {
   }
 
   await loadPDF();
+}
+
+function handleSectionJump(rawTargetPage) {
+  if (!state.pdfDoc) return;
+  const targetPage = clamp(rawTargetPage, 1, state.numPages);
+  const currentView = $(flipbookEl).turn('page') || 1;
+  if (targetPage === currentView) return;
+
+  state.jumpAnimation?.cancel?.();
+  const direction = targetPage > currentView ? 1 : -1;
+  const pageDelta = Math.abs(targetPage - currentView);
+  const totalDuration = 4000;
+  const frameRate = 12;
+  const steps = Math.max(Math.min(pageDelta, frameRate * 4), 4);
+  const interval = totalDuration / steps;
+  const pages = [];
+  const stepSize = pageDelta / steps;
+  for (let i = 1; i <= steps; i += 1) {
+    const nextPage = Math.round(currentView + direction * Math.min(pageDelta, i * stepSize));
+    pages.push(clamp(nextPage, 1, state.numPages));
+  }
+
+  if (multiTurnSound && multiTurnSound.dataset.ready === 'true') {
+    try {
+      multiTurnSound.currentTime = 0;
+      multiTurnSound.play().catch(() => {});
+    } catch (err) {
+      console.warn('Multi flip audio failed', err);
+    }
+  }
+
+  const animation = {
+    cancel() {
+      clearTimeout(this.timer);
+      this.active = false;
+    },
+    active: true,
+    timer: null,
+    queue: [...pages],
+    start() {
+      const next = this.queue.shift();
+      if (next == null || !this.active) return;
+      $(flipbookEl).turn('page', next);
+      ensureRenderedAround(next);
+      this.timer = setTimeout(() => this.start(), interval);
+    }
+  };
+
+  state.jumpAnimation = animation;
+  animation.start();
+}
+if (typeof window !== 'undefined') {
+  window.handleSectionJump = handleSectionJump;
 }
 
 async function determinePageRatio() {
@@ -80,9 +144,7 @@ function wireControls() {
 
   btnToc.addEventListener('click', () => toggleSidebar(true));
   btnCloseToc.addEventListener('click', () => toggleSidebar(false));
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') toggleSidebar(false);
-  });
+  document.addEventListener('keydown', handleGlobalKeydown);
 
   btnFullscreen.addEventListener('click', () => {
     if (isFullscreen()) {
@@ -96,14 +158,111 @@ function wireControls() {
   btnZoomIn.addEventListener('click', doZoomIn);
   btnZoomOut.addEventListener('click', doZoomOut);
 
+  // Wheel to pan; Ctrl+wheel to zoom at pointer
   flipContainer.addEventListener('wheel', (event) => {
     if (event.ctrlKey) {
       event.preventDefault();
-      event.deltaY < 0 ? doZoomIn() : doZoomOut();
+      const focus = { clientX: event.clientX, clientY: event.clientY };
+      event.deltaY < 0 ? doZoomIn(focus) : doZoomOut(focus);
+      return;
+    }
+    // Otherwise pan
+    const speed = 1; // direct pixels
+    state.pan.x -= event.deltaX * speed;
+    state.pan.y -= event.deltaY * speed;
+    applyViewportTransform();
+  }, { passive: false });
+
+  // Drag-to-pan
+  flipbookFrame.addEventListener('mousedown', (e) => {
+    state.isDragging = true;
+    flipbookFrame.classList.add('dragging');
+    state.dragStart = { x: e.clientX, y: e.clientY };
+    state.panStart = { ...state.pan };
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!state.isDragging) return;
+    const dx = e.clientX - state.dragStart.x;
+    const dy = e.clientY - state.dragStart.y;
+    state.pan.x = state.panStart.x + dx;
+    state.pan.y = state.panStart.y + dy;
+    applyViewportTransform();
+  });
+  const endDrag = () => {
+    if (!state.isDragging) return;
+    state.isDragging = false;
+    flipbookFrame.classList.remove('dragging');
+  };
+  window.addEventListener('mouseup', endDrag);
+  window.addEventListener('mouseleave', endDrag);
+
+  // Touch: 1 finger pan, 2 finger pinch-to-zoom
+  flipbookFrame.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      state.isDragging = true;
+      state.dragStart = { x: t.clientX, y: t.clientY };
+      state.panStart = { ...state.pan };
+    } else if (e.touches.length === 2) {
+      state.isDragging = false; // prefer pinch over drag
+      const [t1, t2] = e.touches;
+      state.pinchStartDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      state.pinchStartZoom = state.currentZoom;
+    }
+  }, { passive: true });
+
+  flipbookFrame.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 1 && state.isDragging) {
+      e.preventDefault();
+      const t = e.touches[0];
+      const dx = t.clientX - state.dragStart.x;
+      const dy = t.clientY - state.dragStart.y;
+      state.pan.x = state.panStart.x + dx;
+      state.pan.y = state.panStart.y + dy;
+      applyViewportTransform();
+    } else if (e.touches.length === 2 && state.pinchStartDist > 0) {
+      e.preventDefault();
+      const [t1, t2] = e.touches;
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      const factor = dist / state.pinchStartDist;
+      const nextZoom = state.pinchStartZoom * factor;
+      // midpoint as focus point
+      const focus = { clientX: (t1.clientX + t2.clientX) / 2, clientY: (t1.clientY + t2.clientY) / 2 };
+      setZoom(nextZoom, focus);
     }
   }, { passive: false });
 
+  const endTouch = () => {
+    state.isDragging = false;
+    state.pinchStartDist = 0;
+  };
+  flipbookFrame.addEventListener('touchend', endTouch, { passive: true });
+  flipbookFrame.addEventListener('touchcancel', endTouch, { passive: true });
+
   window.addEventListener('resize', throttle(() => resizeFlipbook(true), 160));
+}
+
+function handleGlobalKeydown(event) {
+  if (event.key === 'Escape') {
+    toggleSidebar(false);
+    return;
+  }
+
+  const activeEl = document.activeElement;
+  const isTyping = activeEl && ['input', 'textarea'].includes(activeEl.tagName?.toLowerCase());
+  if (isTyping) return;
+
+  const key = event.key.toLowerCase();
+  const prevKeys = ['arrowleft', 'a'];
+  const nextKeys = ['arrowright', 'd'];
+
+  if (prevKeys.includes(key)) {
+    event.preventDefault();
+    $(flipbookEl).turn('previous');
+  } else if (nextKeys.includes(key)) {
+    event.preventDefault();
+    $(flipbookEl).turn('next');
+  }
 }
 
 async function loadPDF() {
@@ -149,7 +308,10 @@ function buildPageShells(count) {
     const page = document.createElement('div');
     page.className = 'flip-page';
     page.dataset.page = String(i);
-    page.innerHTML = `<div class="page-loading">Loading page ${i}…</div>`;
+    const scroller = document.createElement('div');
+    scroller.className = 'flip-page-scroll';
+    scroller.innerHTML = `<div class="page-loading">Loading page ${i}…</div>`;
+    page.appendChild(scroller);
     flipbookEl.appendChild(page);
   }
 }
@@ -159,8 +321,9 @@ async function initFlipbook() {
   state.baseSize = { width, height };
   state.currentSize = { width, height };
   state.displayMode = display;
-  flipbookEl.style.width = `${width}px`;
-  flipbookEl.style.height = `${height}px`;
+  updateDisplayModeClass(display);
+  setFrameSize(width, height);
+  setContentSize({ frame: { width, height }, scaled: { width, height }, zoom: 1 });
 
   $(flipbookEl).turn({
     width,
@@ -194,17 +357,21 @@ function resizeFlipbook(forceRender = false) {
   };
   state.currentSize = scaled;
 
-  flipbookEl.style.width = `${scaled.width}px`;
-  flipbookEl.style.height = `${scaled.height}px`;
+  // The frame stays at base size; content grows to scaled size and becomes scrollable
+  setFrameSize(width, height);
+  setContentSize({ frame: { width, height }, scaled, zoom: state.currentZoom });
 
   if ($(flipbookEl).data('turn')) {
-    $(flipbookEl).turn('size', scaled.width, scaled.height);
+    // Keep Turn.js surface at base size; we scale the DOM element instead
+    $(flipbookEl).turn('size', width, height);
     if (display !== state.displayMode) {
       state.displayMode = display;
       $(flipbookEl).turn('display', display);
     }
+    updateDisplayModeClass(state.displayMode);
   } else {
     state.displayMode = display;
+    updateDisplayModeClass(display);
   }
 
   if (forceRender) {
@@ -214,23 +381,33 @@ function resizeFlipbook(forceRender = false) {
 }
 
 function computeBaseSize() {
-  const containerWidth = Math.max(320, flipContainer.clientWidth - 40);
-  const containerHeight = Math.max(320, flipContainer.clientHeight - 30);
+  // Use the full available container size; padding is already minimal in CSS
+  const containerWidth = Math.max(320, flipContainer.clientWidth);
+  const containerHeight = Math.max(320, flipContainer.clientHeight);
   const pageRatio = state.pageRatio || (960 / 620);
-  const wantsSingle = containerWidth < 700;
-  const pagesAcross = wantsSingle ? 1 : 2;
 
-  let leafWidth = containerWidth / pagesAcross;
-  let height = leafWidth / pageRatio;
+  const calcSize = (pagesAcross) => {
+    let leafWidth = containerWidth / pagesAcross;
+    let height = leafWidth / pageRatio;
+    if (height > containerHeight) {
+      height = containerHeight;
+      leafWidth = height * pageRatio;
+    }
+    return { leafWidth, height };
+  };
 
-  if (height > containerHeight) {
-    height = containerHeight;
-    leafWidth = height * pageRatio;
+  let pagesAcross = 2;
+  let { leafWidth, height } = calcSize(pagesAcross);
+
+  if (leafWidth < 260) {
+    pagesAcross = 1;
+    ({ leafWidth, height } = calcSize(pagesAcross));
   }
 
   const width = leafWidth * pagesAcross;
+  const display = pagesAcross === 2 ? 'double' : 'single';
 
-  return { width, height, display: wantsSingle ? 'single' : 'double' };
+  return { width, height, display };
 }
 
 function updatePageIndicator(page) {
@@ -244,7 +421,15 @@ function handleGoToPage() {
   const target = Number(inputPage.value);
   if (Number.isNaN(target)) return;
   const page = clamp(target, 1, state.numPages);
-  $(flipbookEl).turn('page', page);
+  const currentPage = $(flipbookEl).turn('page') || 1;
+  const delta = Math.abs(page - currentPage);
+  if (delta > 2) {
+    handleSectionJump(page);
+  } else {
+    state.jumpAnimation?.cancel?.();
+    $(flipbookEl).turn('page', page);
+    ensureRenderedAround(page);
+  }
 }
 
 function toggleSidebar(forceOpen) {
@@ -271,25 +456,63 @@ function updateFullscreenIndicator() {
   btnFullscreen.classList.toggle('active', isFullscreen());
 }
 
-function doZoomIn() {
-  setZoom(state.currentZoom + state.zoomStep);
+function doZoomIn(focus) {
+  setZoom(state.currentZoom + state.zoomStep, focus);
 }
 
-function doZoomOut() {
-  setZoom(state.currentZoom - state.zoomStep);
+function doZoomOut(focus) {
+  setZoom(state.currentZoom - state.zoomStep, focus);
 }
 
-function setZoom(next) {
+function setZoom(next, focus) {
   const clamped = clamp(next, state.minZoom, state.maxZoom);
   if (Math.abs(clamped - state.currentZoom) < 0.01) return;
+  // Adjust pan so the zoom focuses around the pointer (or center)
+  const frameRect = flipbookFrame.getBoundingClientRect();
+  const fx = focus?.clientX ?? (frameRect.left + frameRect.width / 2);
+  const fy = focus?.clientY ?? (frameRect.top + frameRect.height / 2);
+  const before = clientToContentPoint(fx, fy);
+
   state.currentZoom = clamped;
   updateZoomLabel();
   resizeFlipbook(true);
+
+  const after = clientToContentPoint(fx, fy);
+  // Keep the same logical content point under the cursor by shifting pan
+  state.pan.x += (after.x - before.x) * clamped;
+  state.pan.y += (after.y - before.y) * clamped;
+  applyViewportTransform();
 }
 
 function updateZoomLabel() {
   zoomLabel.textContent = `${Math.round(state.currentZoom * 100)}%`;
 }
+
+function updateDisplayModeClass(display) {
+  flipbookEl.classList.toggle('is-double', display === 'double');
+}
+
+function setFrameSize(width, height) {
+  if (flipbookFrame) {
+    flipbookFrame.style.width = `${width}px`;
+    flipbookFrame.style.height = `${height}px`;
+  }
+}
+
+function setContentSize({ frame, scaled, zoom }) {
+  // Viewport wrapper remains at frame size (no scrollbars)
+  if (flipbookZoom) {
+    flipbookZoom.style.width = `${frame.width}px`;
+    flipbookZoom.style.height = `${frame.height}px`;
+  }
+  // Flipbook retains base logical size but is scaled and translated for pan/centering
+  flipbookEl.style.width = `${frame.width}px`;
+  flipbookEl.style.height = `${frame.height}px`;
+  flipbookEl.style.transformOrigin = 'top left';
+  applyViewportTransform();
+}
+
+// Zoom now uses transform on the flipbook element with a larger wrapper for scrollability
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -303,6 +526,42 @@ function throttle(fn, wait) {
       timer = null;
       fn.apply(null, args);
     }, wait);
+  };
+}
+
+// Compute and apply the centered translate + scale transform to the flipbook element
+function applyViewportTransform() {
+  const base = state.baseSize;
+  const zoom = state.currentZoom;
+  // Auto-center within the frame
+  const frameW = base.width;
+  const frameH = base.height;
+  const contentW = frameW * zoom;
+  const contentH = frameH * zoom;
+  const autoX = (frameW - contentW) / 2;
+  const autoY = (frameH - contentH) / 2;
+  const tx = autoX + state.pan.x;
+  const ty = autoY + state.pan.y;
+  flipbookEl.style.transform = `translate(${tx}px, ${ty}px) scale(${zoom})`;
+}
+
+// Convert a client (viewport) point to the flipbook's unscaled content coordinates
+function clientToContentPoint(clientX, clientY) {
+  const rect = flipbookFrame.getBoundingClientRect();
+  const localX = clientX - rect.left;
+  const localY = clientY - rect.top;
+  const base = state.baseSize;
+  const zoom = state.currentZoom;
+  const frameW = base.width;
+  const frameH = base.height;
+  const contentW = frameW * zoom;
+  const contentH = frameH * zoom;
+  const autoX = (frameW - contentW) / 2;
+  const autoY = (frameH - contentH) / 2;
+  // Reverse the current transform: subtract translate (auto + pan) and divide by scale
+  return {
+    x: (localX - autoX - state.pan.x) / zoom,
+    y: (localY - autoY - state.pan.y) / zoom
   };
 }
 
@@ -334,7 +593,9 @@ async function renderPage(pageNum, { force = false } = {}) {
     const leafWidth = (state.currentSize?.width || flipbookEl.clientWidth) / (displayMode === 'double' ? 2 : 1);
     const maxHeight = state.currentSize?.height || flipbookEl.clientHeight;
     const deviceScale = window.devicePixelRatio || 1;
-    const scale = Math.min(leafWidth / viewport.width, maxHeight / viewport.height) * deviceScale;
+    // Render sharper as we zoom; include a subtle oversample factor
+    const oversample = 1.0;
+    const scale = Math.min(leafWidth / viewport.width, maxHeight / viewport.height) * deviceScale * oversample;
     const canvas = document.createElement('canvas');
     const view = page.getViewport({ scale: scale });
     canvas.width = Math.floor(view.width);
@@ -358,12 +619,13 @@ async function renderPage(pageNum, { force = false } = {}) {
 function applyPageImage(pageNum, dataUrl) {
   const pageEl = flipbookEl.querySelector(`.flip-page[data-page="${pageNum}"]`);
   if (!pageEl) return;
+  const scrollEl = pageEl.querySelector('.flip-page-scroll') || pageEl;
   const img = new Image();
   img.src = dataUrl;
   img.alt = `Magazine page ${pageNum}`;
   img.decoding = 'async';
-  pageEl.innerHTML = '';
-  pageEl.appendChild(img);
+  scrollEl.innerHTML = '';
+  scrollEl.appendChild(img);
 }
 
 function trimCacheSize() {
@@ -432,7 +694,7 @@ function renderTOC(sections) {
     link.addEventListener('click', (event) => {
       event.preventDefault();
       toggleSidebar(false);
-      $(flipbookEl).turn('page', clamp(Number(section.page), 1, state.numPages));
+      handleSectionJump(Number(section.page));
     });
     tocContainer.appendChild(block);
   });

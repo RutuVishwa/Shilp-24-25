@@ -16,6 +16,7 @@
 </head>
 <body>
   <audio id="pageSound" src="assets/turn.mp3" preload="auto"></audio>
+  <audio id="multiTurnSound" src="assets/turn_multiple_pages.mp3" preload="auto"></audio>
 
   <header class="topbar">
     <button id="btnToc" class="icon-btn" aria-label="Open table of contents">☰</button>
@@ -41,7 +42,11 @@
   <main class="main">
     <div id="flipContainer" class="flip-container">
       <div id="flipWrapper" class="flip-wrapper">
-        <div id="flipbook" class="flipbook" aria-live="polite"></div>
+        <div id="flipbookFrame" class="flipbook-frame">
+          <div id="flipbookZoom" class="flipbook-zoom">
+            <div id="flipbook" class="flipbook" aria-live="polite"></div>
+          </div>
+        </div>
       </div>
     </div>
   </main>

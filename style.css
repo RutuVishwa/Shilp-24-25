@@ -10,6 +10,8 @@
   --accent-2: #c05415;
   --border: #e3caa7;
   --shadow-soft: 0 18px 40px rgba(139, 94, 46, 0.15);
+  --topbar-height: 48px;
+  --bottombar-height: 56px;
 }
 
 * {
@@ -30,17 +32,19 @@ body {
     var(--bg);
   color: var(--text);
   min-height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .topbar {
   position: sticky;
   top: 0;
   z-index: 25;
-  height: 64px;
+  height: var(--topbar-height);
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 0 20px;
+  gap: clamp(8px, 2vw, 16px);
+  padding: 0 clamp(16px, 4vw, 32px);
   background: linear-gradient(120deg, #fff7ef, #f7e4cd);
   border-bottom: 1px solid var(--border);
   box-shadow: 0 10px 30px rgba(186, 126, 55, 0.18);
@@ -97,15 +101,19 @@ body {
 
 .main {
   position: relative;
-  height: calc(100vh - 64px - 78px);
+  flex: 1;
+  min-height: 0;
+  height: calc(100vh - var(--topbar-height) - var(--bottombar-height));
   display: flex;
-  overflow: hidden;
+  justify-content: center;
+  /* minimize outer padding to maximize viewing area */
+  padding: 8px 12px;
 }
 
 .sidebar {
   position: fixed;
-  top: 64px;
-  bottom: 78px;
+  top: var(--topbar-height);
+  bottom: var(--bottombar-height);
   left: 0;
   width: min(320px, 80vw);
   background: rgba(255, 249, 243, 0.97);
@@ -180,17 +188,32 @@ body {
 .flip-container {
   flex: 1;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
-  padding: 20px clamp(12px, 4vw, 48px);
-  overflow: auto;
+  /* minimal inner padding */
+  padding: 6px 10px;
+  overflow: hidden;
+  /* allow the viewer to span the full width */
+  max-width: none;
+  width: 100%;
+  min-height: 0;
 }
 
 .flip-wrapper {
   position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
 }
 
-.flipbook {
+.flipbook-frame {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 960px;
   height: 620px;
   background:
@@ -200,10 +223,58 @@ body {
   border-radius: 28px;
   border: 1px solid #f0d7bf;
   box-shadow: 0 30px 70px rgba(127, 85, 44, 0.22);
-  transform-origin: center center;
-  transition: transform 0.2s ease;
+  /* Act as a viewport; we will pan the content via transform, not scrollbars */
+  overflow: hidden;
+  isolation: isolate;
+  cursor: grab;
+}
+
+.flipbook-zoom {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  transform-origin: top center;
+  transition: transform 0.18s ease;
+  position: relative;
+  z-index: 2;
+}
+
+/* Cursor feedback while dragging to pan */
+.flipbook-frame.dragging {
+  cursor: grabbing;
+}
+
+.flipbook {
+  width: 100%;
+  height: 100%;
+  border-radius: 20px;
   overflow: hidden;
   position: relative;
+  isolation: isolate;
+}
+
+.flipbook::before {
+  content: "";
+  position: absolute;
+  top: clamp(12px, 1.4vh, 22px);
+  bottom: clamp(12px, 1.4vh, 22px);
+  width: clamp(10px, 0.8vw, 18px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, #fffaf3 0%, #f3d4b3 55%, #dcae83 100%);
+  border-radius: 999px;
+  box-shadow:
+    inset 0 8px 18px rgba(255, 255, 255, 0.5),
+    inset 0 -10px 22px rgba(140, 87, 39, 0.28);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Hide the spine when not in double-page mode */
+.flipbook:not(.is-double)::before {
+  display: none;
 }
 
 .flipbook .turn-page,
@@ -225,6 +296,13 @@ body {
     linear-gradient(160deg, rgba(255, 255, 255, 0.7), rgba(249, 224, 196, 0.55)),
     radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.35), transparent 55%);
   overflow: hidden;
+}
+
+.flip-page-scroll {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  padding: clamp(8px, 1.5vh, 16px);
 }
 
 .flip-page::after {
@@ -264,11 +342,11 @@ body {
 }
 
 .bottombar {
-  height: 78px;
+  min-height: var(--bottombar-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 clamp(16px, 4vw, 36px);
   background: linear-gradient(120deg, #fff4e5, #fbe7cf);
   border-top: 1px solid var(--border);
   gap: 16px;
@@ -312,10 +390,11 @@ body {
 }
 
 @media (max-width: 1024px) {
-  .flipbook {
+  .flipbook-frame {
     width: clamp(620px, 90vw, 860px);
     height: clamp(420px, 60vh, 560px);
     border-radius: 24px;
+    max-height: 100%;
   }
 }
 
@@ -323,32 +402,58 @@ body {
   .topbar {
     flex-wrap: wrap;
     height: auto;
-    padding: 12px;
+    padding: 10px clamp(10px, 4vw, 22px);
     gap: 8px;
   }
 
   .title {
     flex: 100%;
     text-align: left;
+    font-size: 18px;
   }
 
   .main {
-    height: calc(100vh - 120px);
+    height: calc(100vh - var(--bottombar-height) - 104px);
   }
 
   .bottombar {
     flex-wrap: wrap;
-    height: auto;
-    padding: 12px;
+    min-height: auto;
+    padding: 10px clamp(10px, 4vw, 22px);
   }
 
   .pager {
     flex-wrap: wrap;
+    width: 100%;
+    justify-content: space-between;
   }
 
-  .flipbook {
-    width: clamp(320px, 94vw, 560px);
-    height: clamp(380px, 60vh, 500px);
+  .flipbook-frame {
+    width: 100%;
+    height: clamp(420px, 62vh, 560px);
     border-radius: 18px;
+    max-height: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .icon-btn, .ctl-btn {
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+  .zoom-label {
+    min-width: 56px;
+    font-size: 13px;
+  }
+  #inputPage {
+    width: 84px;
+    padding: 8px 10px;
+    font-size: 14px;
+  }
+  .bottombar {
+    gap: 10px;
+  }
+  .main {
+    padding: 6px 8px;
   }
 }
