@@ -296,66 +296,61 @@ function handleGlobalKeydown(event) {
 
 async function loadPDF() {
   try {
-    // Show loading indicator
-    flipbookEl.innerHTML = '<div class="page-loading">Loading magazine...</div>';
+    // Show full-screen loading animation
+    showLoadingScreen();
     
     if (!isFileProtocol && window.pdfjsLib.GlobalWorkerOptions) {
       window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'libs/pdfjs/pdf.worker.min.js';
     }
 
-    // Optimize PDF loading with better settings
+    // Load PDF with optimized settings
     const loadingTask = window.pdfjsLib.getDocument({
       url: PDF_URL,
       cMapPacked: true,
       disableFontFace: false,
       disableWorker: isFileProtocol,
-      // Enable range requests for faster loading
       rangeChunkSize: 65536,
-      // Disable auto fetch for better performance
       disableAutoFetch: true,
-      // Enable stream for better memory management
       enableXfa: false
     });
 
     state.pdfDoc = await loadingTask.promise;
     state.numPages = state.pdfDoc.numPages;
     
-    // Quick page ratio determination
+    // Update loading progress
+    updateLoadingProgress('Determining page layout...');
     await determinePageRatio();
     
     inputPage.max = state.numPages;
     inputPage.placeholder = `1-${state.numPages}`;
     updatePageIndicator(1);
 
-    // Only build initial page shells (first few pages)
-    buildInitialPageShells();
+    // Build all page shells
+    updateLoadingProgress('Preparing pages...');
+    buildPageShells(state.numPages);
     
-    // Initialize flipbook immediately
+    // Initialize flipbook
+    updateLoadingProgress('Initializing viewer...');
     await initFlipbook();
     
-    // Only render the first page initially
-    await renderPage(1, { force: true });
+    // Preload ALL pages before showing
+    updateLoadingProgress('Loading magazine pages...');
+    await preloadAllPages();
+    
+    // Show the magazine
+    await ensureRenderedAround(1);
     $(flipbookEl).turn('page', 1);
+    
+    // Hide loading screen and show magazine
+    hideLoadingScreen();
     
     // Check mobile after initialization
     checkMobileOnLoad();
     ensureNoPageOverlap();
     
-    // Preload adjacent pages in background
-    setTimeout(() => {
-      preloadAdjacentPages(1);
-    }, 500);
-    
   } catch (err) {
     console.error('Failed to load magazine.pdf', err);
-    flipbookEl.innerHTML = `
-      <div class="page-loading page-error">
-        Unable to load magazine.pdf.<br/>
-        ${err && err.message ? err.message : 'Please confirm the PDF is present and accessible.'}
-      </div>
-    `;
-    state.numPages = 0;
-    updatePageIndicator(0);
+    showErrorScreen(err);
   }
 }
 
@@ -389,16 +384,132 @@ function buildPageShells(count) {
   }
 }
 
-function preloadAdjacentPages(currentPage) {
-  const pagesToPreload = [currentPage - 1, currentPage + 1, currentPage + 2];
-  pagesToPreload.forEach(pageNum => {
-    if (pageNum > 0 && pageNum <= state.numPages) {
-      const pageEl = flipbookEl.querySelector(`[data-page="${pageNum}"]`);
-      if (pageEl && !pageEl.dataset.rendered) {
-        renderPage(pageNum, { force: false }).catch(() => {});
-      }
+function preloadAllPages() {
+  return new Promise(async (resolve) => {
+    const totalPages = state.numPages;
+    let loadedCount = 0;
+    
+    // Render all pages with progress tracking
+    const renderPromises = [];
+    for (let i = 1; i <= totalPages; i++) {
+      renderPromises.push(
+        renderPage(i, { force: true }).then(() => {
+          loadedCount++;
+          const progress = Math.round((loadedCount / totalPages) * 100);
+          updateLoadingProgress(`Loading pages... ${progress}%`);
+        })
+      );
     }
+    
+    // Wait for all pages to render
+    await Promise.all(renderPromises);
+    updateLoadingProgress('Finalizing...');
+    
+    // Small delay to show "Finalizing..." message
+    setTimeout(resolve, 500);
   });
+}
+
+function showLoadingScreen() {
+  const loadingHTML = `
+    <div class="magazine-loading-screen" id="loadingScreen">
+      <div class="loading-content">
+        <div class="magazine-icon">
+          <div class="lotus-container">
+            <div class="lotus-petals">
+              <div class="lotus-petal"></div>
+              <div class="lotus-petal"></div>
+              <div class="lotus-petal"></div>
+              <div class="lotus-petal"></div>
+              <div class="lotus-petal"></div>
+              <div class="lotus-petal"></div>
+              <div class="lotus-petal"></div>
+              <div class="lotus-petal"></div>
+            </div>
+            <div class="lotus-center"></div>
+            <div class="lotus-roots">
+              <div class="root-line"></div>
+              <div class="root-line"></div>
+              <div class="root-line"></div>
+            </div>
+          </div>
+        </div>
+        <h1 class="loading-title">VIRASAT</h1>
+        <p class="loading-subtitle">From Heritage to Horizon</p>
+        <p class="loading-message" id="loadingMessage">Preparing your magazine...</p>
+        <div class="loading-progress">
+          <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+          </div>
+        </div>
+        <div class="loading-dots">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.insertAdjacentHTML('beforeend', loadingHTML);
+}
+
+function updateLoadingProgress(message) {
+  const messageEl = document.getElementById('loadingMessage');
+  const progressFill = document.getElementById('progressFill');
+  
+  if (messageEl) {
+    messageEl.textContent = message;
+  }
+  
+  // Animate progress bar based on message
+  if (progressFill) {
+    if (message.includes('%')) {
+      const percent = parseInt(message.match(/\d+/)?.[0] || 0);
+      progressFill.style.width = `${percent}%`;
+    } else {
+      // Indeterminate progress for non-percentage messages
+      progressFill.style.width = '100%';
+      progressFill.style.animation = 'pulse 1.5s ease-in-out infinite';
+    }
+  }
+}
+
+function hideLoadingScreen() {
+  const loadingScreen = document.getElementById('loadingScreen');
+  if (loadingScreen) {
+    loadingScreen.style.opacity = '0';
+    loadingScreen.style.visibility = 'hidden';
+    setTimeout(() => {
+      loadingScreen.remove();
+    }, 300);
+  }
+}
+
+function showErrorScreen(err) {
+  const loadingScreen = document.getElementById('loadingScreen');
+  if (loadingScreen) {
+    loadingScreen.innerHTML = `
+      <div class="loading-content error">
+        <div class="error-icon">
+          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#d32f2f" stroke-width="1.5">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="15" y1="9" x2="9" y2="15"></line>
+            <line x1="9" y1="9" x2="15" y2="15"></line>
+          </svg>
+        </div>
+        <h2 class="loading-title">Loading Error</h2>
+        <p class="loading-message">
+          Unable to load magazine.pdf.<br/>
+          ${err && err.message ? err.message : 'Please confirm the PDF is present and accessible.'}
+        </p>
+        <button class="retry-btn" onclick="location.reload()">Try Again</button>
+      </div>
+    `;
+  }
+  
+  state.numPages = 0;
+  updatePageIndicator(0);
 }
 
 async function initFlipbook() {
@@ -430,13 +541,6 @@ async function initFlipbook() {
         });
       },
       turning: function(e, page, view) {
-        // Only render pages that are about to be shown
-        view.filter(Boolean).forEach((pageNum) => {
-          const pageEl = flipbookEl.querySelector(`[data-page="${pageNum}"]`);
-          if (pageEl && !pageEl.dataset.rendered) {
-            renderPage(pageNum, { force: true });
-          }
-        });
         // Apply smooth 3D transforms during animation
         $(e.currentTarget).css({
           'transform-style': 'preserve-3d',
@@ -447,8 +551,6 @@ async function initFlipbook() {
       turned: function(e, page, view) {
         updatePageIndicator(page);
         playTurnSound();
-        // Preload next pages after turn completes
-        preloadAdjacentPages(page);
         // Reset transforms after animation completes
         $(e.currentTarget).css({
           'transform-style': '',
