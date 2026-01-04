@@ -296,32 +296,56 @@ function handleGlobalKeydown(event) {
 
 async function loadPDF() {
   try {
+    // Show loading indicator
+    flipbookEl.innerHTML = '<div class="page-loading">Loading magazine...</div>';
+    
     if (!isFileProtocol && window.pdfjsLib.GlobalWorkerOptions) {
       window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'libs/pdfjs/pdf.worker.min.js';
     }
 
+    // Optimize PDF loading with better settings
     const loadingTask = window.pdfjsLib.getDocument({
       url: PDF_URL,
       cMapPacked: true,
       disableFontFace: false,
-      disableWorker: isFileProtocol
+      disableWorker: isFileProtocol,
+      // Enable range requests for faster loading
+      rangeChunkSize: 65536,
+      // Disable auto fetch for better performance
+      disableAutoFetch: true,
+      // Enable stream for better memory management
+      enableXfa: false
     });
 
     state.pdfDoc = await loadingTask.promise;
     state.numPages = state.pdfDoc.numPages;
+    
+    // Quick page ratio determination
     await determinePageRatio();
+    
     inputPage.max = state.numPages;
     inputPage.placeholder = `1-${state.numPages}`;
     updatePageIndicator(1);
 
-    buildPageShells(state.numPages);
+    // Only build initial page shells (first few pages)
+    buildInitialPageShells();
+    
+    // Initialize flipbook immediately
     await initFlipbook();
-    await ensureRenderedAround(1);
+    
+    // Only render the first page initially
+    await renderPage(1, { force: true });
     $(flipbookEl).turn('page', 1);
     
     // Check mobile after initialization
     checkMobileOnLoad();
     ensureNoPageOverlap();
+    
+    // Preload adjacent pages in background
+    setTimeout(() => {
+      preloadAdjacentPages(1);
+    }, 500);
+    
   } catch (err) {
     console.error('Failed to load magazine.pdf', err);
     flipbookEl.innerHTML = `
@@ -332,6 +356,22 @@ async function loadPDF() {
     `;
     state.numPages = 0;
     updatePageIndicator(0);
+  }
+}
+
+function buildInitialPageShells() {
+  flipbookEl.innerHTML = '';
+  // Only build shells for first few pages initially
+  const initialPages = Math.min(5, state.numPages);
+  for (let i = 1; i <= initialPages; i += 1) {
+    const page = document.createElement('div');
+    page.className = 'flip-page';
+    page.dataset.page = String(i);
+    const scroller = document.createElement('div');
+    scroller.className = 'flip-page-scroll';
+    scroller.innerHTML = `<div class="page-loading">Loading page ${i}…</div>`;
+    page.appendChild(scroller);
+    flipbookEl.appendChild(page);
   }
 }
 
@@ -347,6 +387,18 @@ function buildPageShells(count) {
     page.appendChild(scroller);
     flipbookEl.appendChild(page);
   }
+}
+
+function preloadAdjacentPages(currentPage) {
+  const pagesToPreload = [currentPage - 1, currentPage + 1, currentPage + 2];
+  pagesToPreload.forEach(pageNum => {
+    if (pageNum > 0 && pageNum <= state.numPages) {
+      const pageEl = flipbookEl.querySelector(`[data-page="${pageNum}"]`);
+      if (pageEl && !pageEl.dataset.rendered) {
+        renderPage(pageNum, { force: false }).catch(() => {});
+      }
+    }
+  });
 }
 
 async function initFlipbook() {
@@ -378,7 +430,13 @@ async function initFlipbook() {
         });
       },
       turning: function(e, page, view) {
-        ensureRenderedAround(page);
+        // Only render pages that are about to be shown
+        view.filter(Boolean).forEach((pageNum) => {
+          const pageEl = flipbookEl.querySelector(`[data-page="${pageNum}"]`);
+          if (pageEl && !pageEl.dataset.rendered) {
+            renderPage(pageNum, { force: true });
+          }
+        });
         // Apply smooth 3D transforms during animation
         $(e.currentTarget).css({
           'transform-style': 'preserve-3d',
@@ -389,7 +447,8 @@ async function initFlipbook() {
       turned: function(e, page, view) {
         updatePageIndicator(page);
         playTurnSound();
-        trimCacheAround(page);
+        // Preload next pages after turn completes
+        preloadAdjacentPages(page);
         // Reset transforms after animation completes
         $(e.currentTarget).css({
           'transform-style': '',
@@ -689,20 +748,46 @@ async function renderPage(pageNum, { force = false } = {}) {
     const leafWidth = (state.currentSize?.width || flipbookEl.clientWidth) / (displayMode === 'double' ? 2 : 1);
     const maxHeight = state.currentSize?.height || flipbookEl.clientHeight;
     const deviceScale = window.devicePixelRatio || 1;
-    // Render sharper as we zoom; include a subtle oversample factor
-    const oversample = 1.0;
+    
+    // Optimize scale for faster rendering
+    const oversample = pageNum === 1 ? 1.2 : 1.0; // Better quality for first page
     const scale = Math.min(leafWidth / viewport.width, maxHeight / viewport.height) * deviceScale * oversample;
+    
     const canvas = document.createElement('canvas');
     const view = page.getViewport({ scale: scale });
     canvas.width = Math.floor(view.width);
     canvas.height = Math.floor(view.height);
-    const ctx = canvas.getContext('2d', { alpha: false });
+    
+    // Optimize canvas context for performance
+    const ctx = canvas.getContext('2d', { 
+      alpha: false,
+      desynchronized: true,
+      willReadFrequently: false
+    });
 
-    await page.render({ canvasContext: ctx, viewport: view }).promise;
+    // Use better rendering settings
+    const renderContext = {
+      canvasContext: ctx,
+      viewport: view,
+      intent: 'display',
+      enableWebGL: true
+    };
+    
+    await page.render(renderContext).promise;
 
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    // Use JPEG for better compression
+    const quality = pageNum === 1 ? 0.95 : 0.85; // Better quality for first page
+    const dataUrl = canvas.toDataURL('image/jpeg', quality);
+    
     applyPageImage(pageNum, dataUrl);
     state.pageCache.set(pageNum, dataUrl);
+    
+    // Mark page as rendered
+    const pageEl = flipbookEl.querySelector(`.flip-page[data-page="${pageNum}"]`);
+    if (pageEl) {
+      pageEl.dataset.rendered = 'true';
+    }
+    
     trimCacheSize();
   })().finally(() => {
     state.renderQueue.delete(pageNum);
