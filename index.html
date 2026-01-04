@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Annual Magazine – eBook Edition</title>
+  <link rel="stylesheet" href="./style.css" />
+  <script src="./libs/pdfjs/pdf.min.js"></script>
+  <script>
+    if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = './libs/pdfjs/pdf.worker.min.js';
+    }
+  </script>
+  <script src="./libs/jquery/jquery.min.js"></script>
+  <script src="./libs/turnjs/turn.min.js"></script>
+</head>
+<body>
+  <audio id="pageSound" src="./assets/turn.mp3" preload="auto"></audio>
+  <audio id="multiTurnSound" src="./assets/turn_multiple_pages.mp3" preload="auto"></audio>
+
+  <header class="topbar">
+    <button id="btnToc" class="icon-btn" aria-label="Open table of contents">☰</button>
+    <h1 class="title">Annual Magazine – eBook Edition</h1>
+    <div class="topbar-actions">
+      <button id="btnZoomOut" class="icon-btn" aria-label="Zoom out">−</button>
+      <span id="zoomLabel" class="zoom-label">100%</span>
+      <button id="btnZoomIn" class="icon-btn" aria-label="Zoom in">+</button>
+      <button id="btnFullscreen" class="icon-btn" aria-label="Toggle fullscreen">⤢</button>
+    </div>
+  </header>
+
+  <aside id="sidebar" class="sidebar" aria-label="Table of contents">
+    <div class="sidebar-header">
+      <span>Index / TOC</span>
+      <button id="btnCloseToc" class="icon-btn" aria-label="Close table of contents">✕</button>
+    </div>
+    <div id="tocContainer" class="toc">
+      <div class="toc-empty">Loading TOC…</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div id="flipContainer" class="flip-container">
+      <div id="flipWrapper" class="flip-wrapper">
+        <div id="flipbookFrame" class="flipbook-frame">
+          <div id="flipbookZoom" class="flipbook-zoom">
+            <div id="flipbook" class="flipbook" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="bottombar">
+    <button id="btnPrev" class="ctl-btn" aria-label="Previous page">⏮ Prev</button>
+    <div class="pager">
+      <label for="inputPage" class="sr-only">Go to page</label>
+      <span>Go to page</span>
+      <input id="inputPage" type="number" min="1" step="1" />
+      <button id="btnGo" class="ctl-btn">Go</button>
+      <span id="pageIndicator" class="page-indicator">Page 0 of 0</span>
+    </div>
+    <button id="btnNext" class="ctl-btn" aria-label="Next page">Next ⏭</button>
+  </footer>
+
+  <script src="./script.js" type="module"></script>
+</body>
+</html>

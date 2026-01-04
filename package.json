@@ -1,0 +1,27 @@
+{
+  "name": "annual-magazine-ebook",
+  "version": "1.0.0",
+  "description": "Annual Magazine – eBook Edition with Turn.js flipbook",
+  "main": "index.html",
+  "scripts": {
+    "start": "python -m http.server 8000",
+    "dev": "python -m http.server 8000",
+    "serve": "npx serve . -p 8000"
+  },
+  "keywords": [
+    "ebook",
+    "magazine",
+    "flipbook",
+    "turn.js",
+    "pdf",
+    "responsive"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "serve": "^14.2.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

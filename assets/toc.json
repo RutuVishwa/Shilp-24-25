@@ -1,0 +1,27 @@
+{
+  "sections": [
+    { "title": "Message from the Trustee", "page": 1 },
+    { "title": "Principal's Desk", "page": 2 },
+    { "title": "Academic Rankers", "page": 3 },
+    { "title": "Staff Activities", "page": 10 },
+    { "title": "Student Activities", "page": 24 },
+    { "title": "Day's Report", "page": 63 },
+    { "title": "Training and Placement Report", "page": 81 },
+    { "title": "Computer Society's of India Report", "page": 82 },
+    { "title": "International Society of Automation Report", "page": 84 },
+    { "title": "Indian Society for Technical Education Report", "page": 86 },
+    { "title": "Bureau of Indian Standard Report", "page": 87 },
+    { "title": "Entrepreneurship Development Cell Report", "page": 88 },
+    { "title": "Indian Society of Structural Engineers Report", "page": 89 },
+    { "title": "National Service Scheme Report", "page": 90 },
+    { "title": "VESLARC Report", "page": 91 },
+    { "title": "Yoga Day Report", "page": 92 },
+    { "title": "VESPAA Report", "page": 93 },
+    { "title": "Spurthi Report", "page": 95 },
+    { "title": "Anvesh Report", "page": 98 },
+    { "title": "Technothon Report", "page": 100 },
+    { "title": "Technotronix - Project Exhibition Report", "page": 102 },
+    { "title": "Best Project Abstract", "page": 104 },
+    { "title": "Rhetorica", "page": 108 }
+  ]
+}
